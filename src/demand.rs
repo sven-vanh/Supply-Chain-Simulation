@@ -12,19 +12,31 @@ pub fn expected_demand(params: &SimulationParams) -> u32 {
     params.mean_demand as u32
 }
 
-/// Actual monthly demand - what occurs during the simulation
-/// Drawn from a normal distribution that may differ from the expected distribution
+/// Simulation monthly demand - can be based on forecast (expected) or actuals
 #[allow(dead_code)]
-pub fn actual_demand(params: &SimulationParams) -> u32 {
+pub fn simulation_demand(params: &SimulationParams, use_actual: bool) -> u32 {
     let mut rng = thread_rng();
-    let normal = Normal::new(params.actual_mean_demand, params.actual_std_dev_demand)
+    
+    let (mean, std_dev) = if use_actual {
+        (params.actual_mean_demand, params.actual_std_dev_demand)
+    } else {
+        (params.mean_demand, params.std_dev_demand)
+    };
+
+    let normal = Normal::new(mean, std_dev)
         .expect("Invalid normal distribution parameters");
 
     // Sample from the distribution and ensure non-negative
     let demand = rng.sample(normal);
     // Cap at 3 standard deviations above mean to prevent extreme outliers
-    let max_reasonable_demand = params.actual_mean_demand + (3.0 * params.actual_std_dev_demand);
+    let max_reasonable_demand = mean + (3.0 * std_dev);
     (demand.max(0.0) as u32).min(max_reasonable_demand as u32)
+}
+
+/// Legacy actual demand wrapper for compatibility (uses actuals)
+#[allow(dead_code)]
+pub fn actual_demand(params: &SimulationParams) -> u32 {
+    simulation_demand(params, true)
 }
 
 #[cfg(test)]

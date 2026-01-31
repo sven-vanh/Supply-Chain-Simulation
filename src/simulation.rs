@@ -2,7 +2,7 @@
 
 use std::cmp;
 use crate::models::{MonthlyOrder, MonthlyResult, SimulationParams, SupplierPair};
-use crate::demand::actual_demand;
+use crate::demand::simulation_demand;
 use crate::options::OptionValuation;
 use crate::optimizer::find_optimal_production_quantity;
 
@@ -17,7 +17,8 @@ pub fn run_monthly_simulation(
     pair: &SupplierPair,
     initial_order: &MonthlyOrder,
 ) -> (Vec<MonthlyResult>, f64) {
-    run_monthly_simulation_internal(params, pair, initial_order, true)
+    // Top-level simulation for final evaluation always uses actual demand
+    run_monthly_simulation_internal(params, pair, initial_order, true, true)
 }
 
 /// Internal monthly simulation with optional options valuation
@@ -26,6 +27,7 @@ pub fn run_monthly_simulation_internal(
     pair: &SupplierPair,
     initial_order: &MonthlyOrder,
     enable_options: bool,
+    use_actual_demand: bool,
 ) -> (Vec<MonthlyResult>, f64) {
     let mut inventory: u32 = 0;
     let mut total_profit: f64 = 0.0;
@@ -66,8 +68,8 @@ pub fn run_monthly_simulation_internal(
             surge_setup_cost_deducted = true;
         }
 
-        // Step 3b: Monthly demand is deducted (simulate actual demand)
-        let monthly_demand = actual_demand(params);
+        // Step 3b: Monthly demand is deducted
+        let monthly_demand = simulation_demand(params, use_actual_demand);
         let units_sold = cmp::min(inventory, monthly_demand);
         inventory -= units_sold;
 
@@ -88,16 +90,30 @@ pub fn run_monthly_simulation_internal(
                 // Exercise the option if the value exceeds the fixed fee (threshold for profitability)
                 // We need the option value to be greater than the fee to justify the exercise
                 if option_value > params.order_change_fee {
+                    // Recalculate optimal based on FORECAST parameters (passed in params)
+                    // The optimizer internally will now use forecast demand
                     let new_optimal_quantity =
                         find_optimal_production_quantity(params, pair);
-                    let new_order = split_order_quantity(
-                        new_optimal_quantity,
-                        pair,
-                        params,
-                    );
+                    
+                    // Decouple Base from Surge:
+                    // Option exercise only changes the SURGE supplier's supply.
+                    // Base quantity remains fixed from the initial plan.
+                    
+                    // Create new order keeping base quantity fixed
+                    let current_base = current_order.base_quantity;
+                    
+                    // The new total target is new_optimal_quantity.
+                    // Surge fills the gap between base and optimal, up to capacity.
+                    let desired_surge = new_optimal_quantity.saturating_sub(current_base);
+                    let final_surge = cmp::min(desired_surge, pair.surge_supplier.fixed_capacity);
+                    
+                    let new_order = MonthlyOrder {
+                        base_quantity: current_base,
+                        surge_quantity: final_surge,
+                    };
 
-                    // Schedule the order change to take effect after base supplier's lead time
-                    let effective_month = month_idx + pair.base_supplier.lead_time_months;
+                    // Schedule the order change to take effect after SURGE supplier's lead time
+                    let effective_month = month_idx + pair.surge_supplier.lead_time_months;
                     if effective_month < TOTAL_MONTHS {
                         pending_order = Some((effective_month, new_order));
                     }

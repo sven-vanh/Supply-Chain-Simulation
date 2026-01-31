@@ -20,8 +20,8 @@ fn find_optimal_production_quantity_internal(
     pair: &SupplierPair,
     enable_options: bool,
 ) -> u32 {
-    let num_candidates = 10;
-    let simulations_per_candidate = 10;
+    let num_candidates = 20; // Increased candidates
+    let simulations_per_candidate = 100; // Increased to 100 as requested (A)
 
     let base_demand = params.mean_demand;
     let min_factor = 0.7;
@@ -47,6 +47,7 @@ fn find_optimal_production_quantity_internal(
                 pair,
                 &monthly_order,
                 enable_options,
+                false, // Use Forecast demand (not actuals) for optimization
             );
             profits.push(total_profit);
         }
@@ -68,8 +69,8 @@ pub fn find_optimal_production_quantity_with_diagnostics(
     params: &SimulationParams,
     pair: &SupplierPair,
 ) -> u32 {
-    let num_candidates = 10;
-    let simulations_per_candidate = 10;
+    let num_candidates = 20;
+    let simulations_per_candidate = 100; // Increased simulations
 
     let base_demand = params.mean_demand;
     let min_factor = 0.7;
@@ -96,6 +97,7 @@ pub fn find_optimal_production_quantity_with_diagnostics(
                 pair,
                 &monthly_order,
                 true,  // Enable options during initial optimization
+                false, // Use Forecast demand
             );
             profits.push(total_profit);
         }
