@@ -1,9 +1,10 @@
 /// Monte Carlo simulation and statistical analysis module
+/// Updated for multi-product simulation
 
-use crate::models::{MonteCarloStats, MonthlyOrder, SimulationParams, SupplierPair};
+use crate::models::{MonteCarloStats, MonthlyOrder, ProductAllocation, SimulationParams, SupplierPair};
 use crate::simulation::run_monthly_simulation;
 
-/// Run Monte Carlo simulation for a supplier combination
+/// Run Monte Carlo simulation for a supplier combination with multiple products
 /// Executes the simulation many times to gather statistics
 pub fn run_monte_carlo_simulation(
     params: &SimulationParams,
@@ -39,12 +40,29 @@ pub fn run_monte_carlo_simulation(
         profits[index.min(profits.len() - 1)]
     };
 
+    // Build product allocations
+    let product_allocations: Vec<ProductAllocation> = params.products.iter()
+        .map(|product| {
+            let base_qty = monthly_order.base_quantity_for(product.id);
+            let surge_qty = monthly_order.surge_quantity_for(product.id);
+            ProductAllocation {
+                product_id: product.id,
+                product_name: product.name.clone(),
+                base_quantity: base_qty,
+                surge_quantity: surge_qty,
+            }
+        })
+        .collect();
+
+    let total_capacity_used = monthly_order.total_base_quantity() + monthly_order.total_surge_quantity();
+
     MonteCarloStats {
         base_supplier: pair.base_supplier.name.clone(),
         base_supplier_lead_time: pair.base_supplier.lead_time_months,
         surge_supplier: pair.surge_supplier.name.clone(),
         surge_supplier_lead_time: pair.surge_supplier.lead_time_months,
-        optimal_quantity: monthly_order.base_quantity + monthly_order.surge_quantity,
+        product_allocations,
+        total_capacity_used,
         num_simulations,
         mean_profit,
         std_dev_profit,

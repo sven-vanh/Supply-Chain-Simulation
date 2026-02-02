@@ -3,24 +3,32 @@
 
 use rand::{thread_rng, Rng};
 use rand_distr::Normal;
-use crate::models::SimulationParams;
+use crate::models::{SimulationParams, ProductDemandParams};
 
-/// Expected monthly demand - used by the model for decision-making
+/// Expected monthly demand for a specific product - used by the model for decision-making
 /// Returns the mean of the expected demand distribution
 #[allow(dead_code)]
-pub fn expected_demand(params: &SimulationParams) -> u32 {
-    params.mean_demand as u32
+pub fn expected_demand(demand_params: &ProductDemandParams) -> u32 {
+    demand_params.mean_demand as u32
 }
 
-/// Simulation monthly demand - can be based on forecast (expected) or actuals
+/// Expected monthly demand using SimulationParams - for backwards compatibility
 #[allow(dead_code)]
-pub fn simulation_demand(params: &SimulationParams, use_actual: bool) -> u32 {
+pub fn expected_demand_for_product(params: &SimulationParams, product_id: usize) -> u32 {
+    params.get_demand_params(product_id)
+        .map(|dp| dp.mean_demand as u32)
+        .unwrap_or(0)
+}
+
+/// Simulation monthly demand for a specific product - can be based on forecast (expected) or actuals
+#[allow(dead_code)]
+pub fn simulation_demand(demand_params: &ProductDemandParams, use_actual: bool) -> u32 {
     let mut rng = thread_rng();
     
     let (mean, std_dev) = if use_actual {
-        (params.actual_mean_demand, params.actual_std_dev_demand)
+        (demand_params.actual_mean_demand, demand_params.actual_std_dev_demand)
     } else {
-        (params.mean_demand, params.std_dev_demand)
+        (demand_params.mean_demand, demand_params.std_dev_demand)
     };
 
     let normal = Normal::new(mean, std_dev)
@@ -33,10 +41,26 @@ pub fn simulation_demand(params: &SimulationParams, use_actual: bool) -> u32 {
     (demand.max(0.0) as u32).min(max_reasonable_demand as u32)
 }
 
+/// Simulation monthly demand using SimulationParams
+#[allow(dead_code)]
+pub fn simulation_demand_for_product(params: &SimulationParams, product_id: usize, use_actual: bool) -> u32 {
+    params.get_demand_params(product_id)
+        .map(|dp| simulation_demand(dp, use_actual))
+        .unwrap_or(0)
+}
+
+/// Generate demands for all products (independent demands)
+#[allow(dead_code)]
+pub fn simulation_demand_all_products(params: &SimulationParams, use_actual: bool) -> Vec<(usize, u32)> {
+    params.demand_params.iter()
+        .map(|dp| (dp.product_id, simulation_demand(dp, use_actual)))
+        .collect()
+}
+
 /// Legacy actual demand wrapper for compatibility (uses actuals)
 #[allow(dead_code)]
-pub fn actual_demand(params: &SimulationParams) -> u32 {
-    simulation_demand(params, true)
+pub fn actual_demand(demand_params: &ProductDemandParams) -> u32 {
+    simulation_demand(demand_params, true)
 }
 
 #[cfg(test)]
@@ -45,39 +69,29 @@ mod tests {
 
     #[test]
     fn test_expected_demand() {
-        let params = SimulationParams {
+        let demand_params = ProductDemandParams {
+            product_id: 0,
             mean_demand: 100.0,
             std_dev_demand: 20.0,
             actual_mean_demand: 100.0,
             actual_std_dev_demand: 25.0,
-            selling_price: 50.0,
-            monthly_holding_cost: 5.0,
-            liquidation_price: 20.0,
-            unit_cost_base: 30.0,
-            lead_time: 1,
-            order_change_fee: 100.0,
         };
 
-        assert_eq!(expected_demand(&params), 100);
+        assert_eq!(expected_demand(&demand_params), 100);
     }
 
     #[test]
     fn test_actual_demand_is_non_negative() {
-        let params = SimulationParams {
+        let demand_params = ProductDemandParams {
+            product_id: 0,
             mean_demand: 100.0,
             std_dev_demand: 20.0,
             actual_mean_demand: 100.0,
             actual_std_dev_demand: 25.0,
-            selling_price: 50.0,
-            monthly_holding_cost: 5.0,
-            liquidation_price: 20.0,
-            unit_cost_base: 30.0,
-            lead_time: 1,
-            order_change_fee: 100.0,
         };
 
         for _ in 0..100 {
-            let demand = actual_demand(&params);
+            let demand = actual_demand(&demand_params);
             assert!(demand >= 0);
             assert!(demand <= 1000);
         }

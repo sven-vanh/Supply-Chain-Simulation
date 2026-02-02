@@ -1,25 +1,38 @@
 /// Reporting and output formatting module
 /// Handles all console output and result presentation
+/// Updated for multi-product simulation
 
 use crate::models::MonteCarloStats;
 
 /// Display Monte Carlo results for all supplier combinations
 pub fn display_all_results(mut results: Vec<MonteCarloStats>) {
-    println!("\n╔═══════════════════════════════════════════════════════════════════════════════════╗");
-    println!("║                    MONTE CARLO RESULTS - ALL COMBINATIONS                        ║");
-    println!("╚═══════════════════════════════════════════════════════════════════════════════════╝\n");
+    println!("\n╔═══════════════════════════════════════════════════════════════════════════════════════════════════╗");
+    println!("║                           MONTE CARLO RESULTS - ALL COMBINATIONS                                  ║");
+    println!("╚═══════════════════════════════════════════════════════════════════════════════════════════════════╝\n");
 
     // Sort results by mean profit
     results.sort_by(|a, b| b.mean_profit.partial_cmp(&a.mean_profit).unwrap());
 
     for (rank, result) in results.iter().enumerate() {
         println!(
-            "{}. {} ({}mo lead) + {} ({}mo lead) (Qty: {})",
+            "{}. {} ({}mo lead) + {} ({}mo lead)",
             rank + 1,
             result.base_supplier, result.base_supplier_lead_time,
             result.surge_supplier, result.surge_supplier_lead_time,
-            result.optimal_quantity
         );
+        
+        // Display product allocations
+        print!("   Allocations: ");
+        for (i, alloc) in result.product_allocations.iter().enumerate() {
+            if i > 0 { print!(", "); }
+            print!("{}: {} (base: {}, surge: {})", 
+                   alloc.product_name, 
+                   alloc.base_quantity + alloc.surge_quantity,
+                   alloc.base_quantity,
+                   alloc.surge_quantity);
+        }
+        println!(" | Total: {}", result.total_capacity_used);
+        
         println!(
             "   Mean: ${:.2} ± ${:.2} | Median: ${:.2} | Range: [${:.2}, ${:.2}]",
             result.mean_profit,
@@ -37,16 +50,28 @@ pub fn display_all_results(mut results: Vec<MonteCarloStats>) {
 
 /// Display the best supplier combination with detailed statistics
 pub fn display_best_result(result: &MonteCarloStats) {
-    println!("╔════════════════════════════════════════════════════════════════════════════╗");
-    println!("║              BEST SUPPLIER COMBINATION (HIGHEST MEAN PROFIT)                ║");
-    println!("╚════════════════════════════════════════════════════════════════════════════╝\n");
+    println!("╔════════════════════════════════════════════════════════════════════════════════════════════════════╗");
+    println!("║                     BEST SUPPLIER COMBINATION (HIGHEST MEAN PROFIT)                                ║");
+    println!("╚════════════════════════════════════════════════════════════════════════════════════════════════════╝\n");
 
     println!(
-        "Base Supplier: {} ({} month lead time)\nSurge Supplier: {} ({} month lead time)\nOptimal Quantity: {}\n",
+        "Base Supplier: {} ({} month lead time)\nSurge Supplier: {} ({} month lead time)\n",
         result.base_supplier, result.base_supplier_lead_time,
         result.surge_supplier, result.surge_supplier_lead_time,
-        result.optimal_quantity
     );
+    
+    println!("Product Allocations:");
+    for alloc in &result.product_allocations {
+        println!(
+            "  {}: {} total (base: {}, surge: {})",
+            alloc.product_name,
+            alloc.base_quantity + alloc.surge_quantity,
+            alloc.base_quantity,
+            alloc.surge_quantity
+        );
+    }
+    println!("  Total Capacity Used: {}\n", result.total_capacity_used);
+    
     println!(
         "Expected Profit: ${:.2} ± ${:.2} (std dev)",
         result.mean_profit, result.std_dev_profit
@@ -71,19 +96,22 @@ pub fn display_optimization_start(base_name: &str, surge_name: &str) {
 
 /// Display finding optimal supply level message
 pub fn display_finding_optimal() {
-    print!("  Finding optimal supply level... ");
+    print!("  Finding optimal supply levels... ");
     let _ = std::io::Write::flush(&mut std::io::stdout());
 }
 
-/// Display found optimal quantity
-pub fn display_found_quantity(quantity: u32) {
-    println!("Found: {} units", quantity);
+/// Display found optimal quantities for all products
+pub fn display_found_quantities(quantities: &[(usize, String, u32)]) {
+    println!("Found:");
+    for (_, name, qty) in quantities {
+        println!("    {}: {} units", name, qty);
+    }
 }
 
 /// Display Monte Carlo results for current combination
 pub fn display_combination_results(mean_profit: f64, std_dev: f64, min_profit: f64, max_profit: f64) {
     println!(
-        "Mean Profit: ${:.2} ± ${:.2} | Min: ${:.2} | Max: ${:.2}",
+        "  Mean Profit: ${:.2} ± ${:.2} | Min: ${:.2} | Max: ${:.2}",
         mean_profit, std_dev, min_profit, max_profit
     );
 }
